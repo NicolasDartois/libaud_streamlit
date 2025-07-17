@@ -1,7 +1,5 @@
 import streamlit as st
-import pyodbc
 import pandas as pd
-import configparser
 import os
 import requests
 
@@ -22,48 +20,23 @@ def convertir_en_m3(valeur, unite):
     return round(valeur * {'CTQ':1e-6, 'DMQ':1e-3, 'MTQ':1}.get(unite.strip().upper(), 0), 6), 'mètre cube'
 
 # === Interface Streamlit ===
-st.title("Traitement des données produits WAVIN")
+st.title("Traitement des données produits - Version GitHub")
 
-code_fournisseur = st.text_input("Code fournisseur (ex: FOU00189)", value="FOU00189")
+# Charger le fichier de correspondance depuis le repo GitHub
+df_codes = pd.read_csv("https://raw.githubusercontent.com/<TON-REPO-GITHUB>/main/data/code.csv")
+
+fournisseurs_disponibles = df_codes['FOURNISSEUR'].unique().tolist()
+fournisseur_selectionne = st.selectbox("Choisir un fournisseur", options=fournisseurs_disponibles)
+
 fabdis_file = st.file_uploader("Fichier FABDIS (.xlsx)", type="xlsx")
-dossier_sortie = st.text_input("Dossier de sortie (visuels, data.xlsx)",
-    value=r"C:\\Users\\n.dartois\\OneDrive - BETONS LIBAUD\\General - B2B Libaud\\10 - PIM\\70 - Suivi base produit\\NEG\\WAVIN")
+dossier_sortie = st.text_input("Dossier de sortie (visuels, data.xlsx)", value="./output")
 
 if st.button("Lancer le traitement"):
     try:
-        # === Lecture config ===
-        config = configparser.ConfigParser()
-        config.read(r'C:\\Users\\n.dartois\\OneDrive - BETONS LIBAUD\\Documents\\PYTHON\\Environnement1\\Projet suivi DATA\\Config\\Param.ini')
-
-        uid_sage = config.get('SECURITY SAGE', 'UID')
-        pwd_sage = config.get('SECURITY SAGE', 'PWD')
-        srv_sage = config.get('SECURITY SAGE', 'SRV')
-        db_sage = config.get('SECURITY SAGE', 'DB')
-
-        # === Requête SQL ===
-        sql_query = f"""
-        SELECT
-            ITMMASTER.ITMREF_0 AS LIBAUD,
-            ITMB.ITMREFBPS_0 AS FOURNISSEUR
-        FROM x3v12.LIBAUD.ITMMASTER AS ITMMASTER
-        OUTER APPLY (
-            SELECT TOP 1 BPSNUM_0, ITMREFBPS_0
-            FROM x3v12.LIBAUD.ITMBPS
-            WHERE ITMBPS.ITMREF_0 = ITMMASTER.ITMREF_0
-            AND ITMBPS.DEFBPSFLG_0 = 2
-            ORDER BY UPDDATTIM_0 DESC
-        ) AS ITMB
-        WHERE ITMB.BPSNUM_0 = '{code_fournisseur}'
-            AND ITMMASTER.ITMSTA_0 = 1
-            AND ITMB.ITMREFBPS_0 NOT LIKE '%NEG%'
-        """
-
-        # Connexion et récupération
-        conn = pyodbc.connect(
-            f'DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={srv_sage};DATABASE={db_sage};UID={uid_sage};PWD={pwd_sage};'
-        )
-        df_refs = pd.read_sql(sql_query, conn)
-        conn.close()
+        df_refs = df_codes[df_codes['FOURNISSEUR'] == fournisseur_selectionne].rename(columns={
+            'CODE LIBAUD': 'LIBAUD',
+            'CODE FOURNISSEUR': 'FOURNISSEUR'
+        })
 
         if fabdis_file is None:
             st.error("Veuillez uploader un fichier FABDIS valide.")
